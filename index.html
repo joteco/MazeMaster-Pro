@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MazeMaster Pro - Platinum Edition</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --cell-size: 24px; /* Default, will be updated by JS */
+            --cell-gap: 1px;
+            --cell-font-size: calc(var(--cell-size) * 0.6);
+            --primary-glow-color: #ffca28;
+            --secondary-glow-color: #64b5f6;
+            --container-padding: 15px; /* Base padding for the maze container */
+            
+            --wall-color: linear-gradient(145deg, #334155, #1e293b);
+            --path-color-unvisited: linear-gradient(135deg, #a5f3fc, #67e8f9); /* Glowing Cyan */
+            --path-color-visited: linear-gradient(135deg, #475569, #334155); /* Darker, original path color */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            height: 100%; 
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #e2e8f0;
+            display: flex;
+            min-height: 100vh; 
+            overflow: hidden; /* Prevent body scrollbars */
+        }
+
+        .game-container {
+            display: flex;
+            width: 100%;
+            height: 100vh; /* Full viewport height */
+            position: relative;
+        }
+
+        .sidebar {
+            width: 300px;
+            flex-shrink: 0;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(51, 65, 85, 0.7);
+            padding: 25px;
+            color: #cbd5e1;
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            height: 100%; 
+            position: relative;
+            z-index: 100;
+        }
+
+        .sidebar.hidden {
+            transform: translateX(-100%);
+            position: fixed;
+            left:0; top:0; bottom:0;
+        }
+
+        .sidebar h2, .sidebar h3 {
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            color: #f1f5f9;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.5);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .sidebar h2 i { margin-right: 12px; color: var(--primary-glow-color); }
+        .sidebar h3 i { margin-right: 10px; color: var(--secondary-glow-color); }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; 
+            padding: 15px;
+            position: relative;
+            overflow: hidden; 
+            height: 100vh; 
+        }
+
+        .game-header {
+            text-align: center;
+            margin-bottom: 15px; 
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        .game-title {
+            font-size: 2.8rem; 
+            font-weight: 700;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.6);
+            margin-bottom: 12px;
+            background: linear-gradient(45deg, #ffeb3b, #fffde7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1px;
+        }
+
+        .game-title i {
+             margin-right: 15px;
+             background: linear-gradient(45deg, #ffeb3b, #fffde7);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        .game-stats {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 15px; 
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .stat-card {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(71, 85, 105, 0.6);
+            border-radius: 10px;
+            padding: 8px 12px;
+            text-align: center;
+            min-width: 85px;
+            flex-grow: 1;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #f8fafc;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+        }
+
+        .stat-value#healthValue { letter-spacing: 2px; }
+        #activePowerUpsValue span { font-size: 1.1rem; margin: 0 3px; }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .maze-container-wrapper {
+            flex-grow: 1;
+            flex-shrink: 1;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 0; /* Crucial for flex shrinking */
+            padding: 10px 0;
+        }
+
+        .maze-container {
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(5px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: var(--container-padding);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+            position: relative;
+            overflow: hidden; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .maze {
+            display: grid;
+            gap: var(--cell-gap);
+            background: rgba(44, 62, 80, 0.7);
+            border-radius: 8px;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            font-size: var(--cell-font-size);
+            border-radius: 4px; 
+            position: relative;
+            transition: background-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8); 
+        }
+        
+        .cell.wall { background: var(--wall-color); box-shadow: inset 0 1px 3px rgba(0,0,0,0.7); }
+        .cell.path { 
+            background: var(--path-color-unvisited);
+            opacity: 0.6;
+            box-shadow: inset 0 0 8px rgba(165, 243, 252, 0.5);
+        }
+        .cell.visited { 
+            background: var(--path-color-visited);
+            opacity: 0.7; 
+            box-shadow: none;
+        }
+
+        .cell.effect-fire, .cell.effect-enemybullet { animation: fireEffectAnim 0.3s ease-out; }
+        @keyframes fireEffectAnim {0%{background-color:rgba(255,100,0,0);transform:scale(0.4);}50%{background-color:rgba(255,100,0,0.9);transform:scale(1.15);}100%{background-color:rgba(255,100,0,0);transform:scale(1);}}
+        .cell.effect-bullet { animation: bulletEffectAnim 0.2s linear; }
+        @keyframes bulletEffectAnim {0%{background-color:rgba(220,220,240,0);transform:scale(0.2);}50%{background-color:rgba(220,220,240,0.8);transform:scale(0.95);}100%{background-color:rgba(220,220,240,0);transform:scale(0.2);}}
+        .cell.effect-freeze { animation: freezeEffectAnim 0.5s ease-in-out; }
+        @keyframes freezeEffectAnim {0%{box-shadow:inset 0 0 0px rgba(135,206,250,0);}50%{box-shadow:inset 0 0 12px rgba(135,206,250,1);}100%{box-shadow:inset 0 0 0px rgba(135,206,250,0);}}
+        .cell.effect-magic { animation: magicPulseEffectAnim 0.4s ease-out; }
+        @keyframes magicPulseEffectAnim {0%{background-color:rgba(218,112,214,0);transform:scale(0.4) rotate(0deg);}50%{background-color:rgba(218,112,214,0.7);transform:scale(1.25) rotate(180deg);}100%{background-color:rgba(218,112,214,0);transform:scale(1) rotate(360deg);}}
+        
+        .cell.start { background: linear-gradient(135deg, #22c55e, #16a34a); box-shadow: 0 0 15px rgba(34,197,94,0.8); }
+        .cell.end { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 0 15px rgba(239,68,68,0.8); }
+        .cell.end.locked { background: linear-gradient(135deg, #7f8c8d, #566573); }
+        .cell.player { background: linear-gradient(135deg, #facc15, #f59e0b); border-radius: 50%; box-shadow:0 0 18px rgba(250,204,21,1); animation:pulsePlayer 1s infinite ease-in-out; z-index:10;}
+        @keyframes pulsePlayer {0%{transform:scale(0.9);box-shadow:0 0 12px rgba(250,204,21,0.8);}50%{transform:scale(1.05);box-shadow:0 0 22px rgba(250,204,21,1.2);}100%{transform:scale(0.9);box-shadow:0 0 12px rgba(250,204,21,0.8);}}
+        @keyframes shakePlayer {0%,100%{transform:translateX(0) scale(1.05);}10%,30%,50%,70%,90%{transform:translateX(-3px) scale(1.05);}20%,40%,60%,80%{transform:translateX(3px) scale(1.05);}}
+
+        .cell.hint, .cell.solution-hint {
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9) !important;
+            animation: glowHint 0.7s infinite alternate;
+            opacity: 0.9 !important;
+        }
+        @keyframes glowHint {from{box-shadow:0 0 8px #38bdf8,0 0 12px #38bdf8 inset;}to{box-shadow:0 0 18px #0ea5e9,0 0 24px #0ea5e9 inset;}}
+
+        .cell.enemy { border-radius: 30%; animation: enemyPulse 1.5s infinite; }
+        .cell.enemy-grunt { background: linear-gradient(135deg, #dc2626, #b91c1c); box-shadow:0 0 12px rgba(220,38,38,0.9); }
+        .cell.enemy-ranger { background: linear-gradient(135deg, #16a34a, #15803d); box-shadow:0 0 12px rgba(22,163,74,0.9); }
+        .cell.enemy-tank { background: linear-gradient(135deg, #4b5563, #374151); box-shadow:0 0 12px rgba(75,85,99,0.9); transform: scale(1.1); } 
+        .cell.enemy-stealth { background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow:0 0 12px rgba(124,58,237,0.9); opacity: 0.8; }
+        .cell.enemy-stealth.invisible { opacity: 0.15 !important; animation: stealthEffect 1.3s infinite alternate; filter: blur(1px); }
+        @keyframes stealthEffect { from { opacity: 0.15; } to { opacity: 0.35; }}
+        .cell.enemy.frozen { animation:none; background:linear-gradient(135deg, #a5f3fc, #67e8f9); box-shadow:0 0 12px rgba(165,243,252,1); }
+        
+        .cell.enemy-tank.preparing-charge { 
+            animation: tankChargeTell 0.35s infinite alternate !important; 
+            border: 3px solid #fbbf24; 
+            box-shadow: 0 0 15px #fbbf24 !important; 
+        }
+        @keyframes tankChargeTell { 
+            from { background-color: #f87171; transform: scale(1.12); } 
+            to { background-color: #ef4444; transform: scale(1.15); }
+        }
+
+        .cell.trap { background:linear-gradient(135deg,#4b5563,#374151);box-shadow:inset 0 0 6px rgba(0,0,0,0.9); }
+        .cell.trap::before {content:"X";color:rgba(156,163,175,0.7);font-weight:bold;}
+        .cell.player-trap { background:none; }
+        .cell.player-trap.triggered { animation:trapTriggerAnim 0.3s ease-out; }
+        @keyframes trapTriggerAnim {0%{transform:scale(1);opacity:1;}50%{transform:scale(1.35) rotate(30deg);opacity:0.5;}100%{transform:scale(0.2);opacity:0;}}
+        .cell.teleporter { background:linear-gradient(135deg,#a78bfa,#8b5cf6);border-radius:50%;box-shadow:0 0 18px rgba(167,139,250,1);animation:teleporterSpin 1.8s infinite linear;}
+        .cell.key { background:none;color:#fde047;animation:keyShine 1s infinite alternate;}
+        .cell.door { background:linear-gradient(135deg,#92400e,#78350f);box-shadow:inset 0 2px 4px rgba(0,0,0,0.7);}
+        .cell.door.open { background:linear-gradient(135deg,#d97706,#b45309);opacity:0.5;}
+        .cell.powerup { background:none;border-radius:50%;animation:powerupFloat 1.4s infinite ease-in-out;}
+        @keyframes enemyPulse {0%,100%{transform:scale(1);opacity:0.8;}50%{transform:scale(1.1);opacity:1;}}
+        @keyframes teleporterSpin {0%{transform:rotate(0deg) scale(1);}50%{transform:scale(1.05);}100%{transform:rotate(360deg) scale(1);}}
+        @keyframes keyShine {0%{text-shadow:0 0 6px #fde047;transform:scale(1);}100%{text-shadow:0 0 16px #fef08a,0 0 22px #fde047;transform:scale(1.08);}}
+        @keyframes powerupFloat {0%,100%{transform:translateY(0px) scale(1);}50%{transform:translateY(-3px) scale(1.08);}}
+
+        .controls {
+            margin-top: auto; 
+            padding-top: 15px; 
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); 
+            gap: 8px; 
+            justify-content: center;
+            width: 100%;
+            max-width: 700px; 
+            flex-shrink: 0; 
+        }
+
+        .btn {
+            padding: 10px 12px; 
+            border: 1px solid rgba(71, 85, 105, 0.7);
+            border-radius: 8px;
+            font-size: 0.85rem; 
+            font-weight: 600; 
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-decoration: none;
+            color: #e2e8f0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+            text-transform: capitalize;
+            letter-spacing: 0.3px;
+        }
+        .btn .btn-label { display: none; }
+        .btn .btn-icon { font-size: 1.3em; }
+        .btn .btn-cooldown { font-size: 0.65em; margin-left: 4px; opacity: 0.7; color: #94a3b8; }
+        @media (min-width: 768px) { 
+            .btn .btn-label { display: inline; margin-left: 5px; font-size: 0.9em;}
+        }
+
+        .btn.disabled { background:rgba(51,65,85,0.9) !important; border-color:rgba(71,85,105,0.8) !important; cursor:not-allowed; opacity:0.5; color: #94a3b8 !important;}
+        .btn-primary { background:linear-gradient(135deg,#2563eb,#1d4ed8); border-color: #1e40af;}
+        .btn-success { background:linear-gradient(135deg,#16a34a,#15803d); border-color: #166534;}
+        .btn-warning { background:linear-gradient(135deg,#f59e0b,#d97706); border-color: #b45309; color:#fff !important;}
+        .btn-danger { background:linear-gradient(135deg,#dc2626,#b91c1c); border-color: #991b1b;}
+        .btn-info { background:linear-gradient(135deg,#0ea5e9,#0284c7); border-color: #0369a1;}
+        .btn-action { background:linear-gradient(135deg,#7c3aed,#6d28d9); border-color: #5b21b6;}
+
+        .btn:not(.disabled):hover {transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,0.4); filter: brightness(1.2);}
+        .btn:not(.disabled):active {transform:translateY(0px) scale(0.96); filter: brightness(0.8);}
+
+        .settings-group { margin-bottom: 20px; }
+        .settings-group h3 { margin-bottom: 10px; }
+        .settings-buttons { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+        .settings-btn { padding:6px 12px; border:1px solid rgba(71,85,105,0.6); background:rgba(51,65,85,0.7); color:#cbd5e1; border-radius:6px; cursor:pointer; transition:all 0.15s ease; font-size:0.8rem; }
+        .settings-btn.active, .settings-btn:hover { background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; border-color:#b45309; transform:scale(1.03); }
+
+        .progress-section{margin-bottom:20px;}.progress-section h3 i{color:#16a34a;}
+        .progress-bar{width:100%;height:10px;background:rgba(15,23,42,0.9);border-radius:5px;overflow:hidden;margin-top:6px;border:1px solid rgba(51,65,85,0.5);}
+        .progress-fill{height:100%;background:linear-gradient(90deg,#16a34a,#34d399);border-radius:4px;transition:width 0.25s ease-in-out;box-shadow:inset 0 0.5px 1px rgba(0,0,0,0.5);}
+        #progressText{font-size:0.75rem;margin-top:4px;opacity:0.8;text-align:center;color:#cbd5e1;}
+
+        .achievements{margin-top:20px;}.achievements h3 i{color:#dc2626;}
+        .achievement{display:flex;align-items:center;gap:8px;padding:7px 10px;margin:5px 0;background:rgba(30,41,59,0.6);border-radius:6px;transition:all 0.15s ease;border-left:3px solid rgba(71,85,105,0.7);font-size:0.85rem;color:#cbd5e1;}
+        .achievement i{color:#94a3b8;transition:color 0.15s ease;}
+        .achievement.unlocked{background:rgba(22,163,74,0.25);border-left-color:#16a34a;color:#e2e8f0;}.achievement.unlocked i{color:#16a34a;}
+
+        .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,18,35,0.92);display:none;align-items:center;justify-content:center;z-index:1000;opacity:0;transition:opacity 0.25s ease;}
+        .modal.show{display:flex;opacity:1;}
+        .modal-content{background:linear-gradient(145deg,#1e3a8a,#0f172a);border-radius:12px;padding:30px;max-width:480px;width:90%;text-align:center;color:white;position:relative;box-shadow:0 18px 50px rgba(0,0,0,0.7);transform:scale(0.95);transition:transform 0.25s ease;}
+        .modal.show .modal-content{transform:scale(1);}
+        .modal-content h2{font-size:1.8rem;margin-bottom:12px;text-shadow:1px 1px 3px rgba(0,0,0,0.6);}.modal-content p{font-size:0.95rem;line-height:1.5;margin-bottom:8px;}.modal-content .btn{margin-top:12px;}
+        .modal-close{position:absolute;top:15px;right:18px;font-size:1.6rem;cursor:pointer;color:white;opacity:0.6;transition:opacity 0.15s ease,transform 0.15s ease;}
+        .modal-close:hover{opacity:1;transform:rotate(90deg) scale(1.08);}
+
+        .notification{position:fixed;bottom:15px;right:15px;padding:10px 18px;border-radius:6px;color:white;font-weight:500;z-index:1001;transform:translateX(calc(100% + 25px));transition:transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275);display:flex;align-items:center;gap:8px;max-width:360px;box-shadow:0 6px 18px rgba(0,0,0,0.4);font-size:0.85rem;}
+        .notification i{font-size:1.1em;}
+        .notification.show{transform:translateX(0);}
+        .notification.success{background:linear-gradient(135deg,#15803d,#166534);}
+        .notification.warning{background:linear-gradient(135deg,#d97706,#b45309);}
+        .notification.error{background:linear-gradient(135deg,#b91c1c,#991b1b);}
+        .notification.info{background:linear-gradient(135deg,#0284c7,#0369a1);}
+
+        .leaderboard{margin-top:20px;}.leaderboard h3 i{color:var(--primary-glow-color);}
+        .leaderboard-entry{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;margin:4px 0;background:rgba(30,41,59,0.7);border-radius:5px;font-size:0.8rem;color:#cbd5e1;}
+        .leaderboard-entry span:first-child{font-weight:500;}.leaderboard-entry span:last-child{font-weight:600;color:var(--primary-glow-color);}
+
+        .sound-controls{display:flex;gap:8px;margin-bottom:15px;justify-content:center;}
+        .sound-btn{padding:6px 10px;border:1px solid rgba(71,85,105,0.5);border-radius:15px;background:rgba(51,65,85,0.8);color:#cbd5e1;cursor:pointer;transition:all 0.15s ease;font-size:0.75rem;}
+        .sound-btn i{margin-right:4px;}.sound-btn.active{background:linear-gradient(135deg,#15803d,#14532d);border-color:#14532d;}.sound-btn:hover{transform:scale(1.04);filter:brightness(1.15);}
+
+        .particles{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;}
+        .particle{position:absolute;width:4px;height:4px;background:var(--primary-glow-color);border-radius:50%;opacity:0;animation:particle-float 2.5s infinite;} 
+        @keyframes particle-float{0%{opacity:1;transform:translateY(0) rotate(0deg) scale(1.1);}100%{opacity:0;transform:translateY(-100px) rotate(550deg) scale(0.2);}}
+
+        @media (max-width:1024px){
+            .sidebar{width: 260px;}
+            .game-title {font-size: 2.4rem;}
+            .stat-value {font-size: 1.3rem;}
+            .stat-label {font-size: 0.65rem;}
+            .btn .btn-icon{font-size:1.2em;}
+            .controls {max-width: 600px;}
+            :root { --container-padding: 12px; }
+        }
+        @media (max-width:768px){
+            .sidebar{width:240px; padding: 15px;}
+            .main-content {padding: 10px;}
+            .game-title{font-size:2rem;}
+            .stat-card{min-width:70px;padding:6px 10px;}
+            .stat-value{font-size:1.1rem;}
+            .stat-label{font-size:0.6rem;}
+            .controls{grid-template-columns:repeat(auto-fit, minmax(80px, 1fr));max-width: 98%; gap: 6px; padding-top:10px;}
+            .btn{padding:8px 10px; font-size: 0.8rem;}
+            .btn .btn-label{display:none;}
+            .btn .btn-icon{font-size:1.1em;}
+            :root { --container-padding: 10px; }
+        }
+        @media (max-width:480px){
+            .sidebar{width: 100%; height: auto; position: fixed; bottom: 0; left: 0; right: 0; border-right: none; border-top: 1px solid rgba(51, 65, 85, 0.7); transform: translateY(100%); padding: 10px; max-height: 50vh;}
+            .sidebar.hidden {transform: translateY(0%);} 
+            .main-content {padding: 8px;}
+            .game-header {margin-bottom: 5px;}
+            .game-title{font-size:1.6rem; margin-bottom: 5px;}
+            .game-stats {gap: 5px; margin-bottom: 5px;}
+            .stat-card{padding:5px 7px;min-width:55px;}
+            .stat-value{font-size:0.9rem;}
+            .stat-label {font-size: 0.5rem;}
+            .controls{grid-template-columns:repeat(auto-fit, minmax(65px, 1fr));max-width: 100%; gap: 5px; padding-top: 5px;} 
+            .btn .btn-icon{font-size:1em;}
+            :root { --container-padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="sidebar hidden" id="sidebar">
+            <h2><i class="fas fa-cogs"></i> Settings</h2>
+            <div class="settings-group">
+                <h3><i class="fas fa-tachometer-alt"></i> Difficulty</h3>
+                <div class="settings-buttons" id="difficultyButtons">
+                    <button class="settings-btn active" data-difficulty="easy">Easy</button>
+                    <button class="settings-btn" data-difficulty="medium">Medium</button>
+                    <button class="settings-btn" data-difficulty="hard">Hard</button>
+                    <button class="settings-btn" data-difficulty="expert">Expert</button>
+                    <button class="settings-btn" data-difficulty="nightmare">Nightmare</button>
+                </div>
+            </div>
+            <div class="settings-group">
+                <h3><i class="fas fa-sliders-h"></i> Options</h3>
+                <div class="settings-buttons">
+                    <button class="settings-btn active" id="musicToggle"><i class="fas fa-music"></i> Music</button>
+                    <button class="settings-btn active" id="soundToggle"><i class="fas fa-volume-up"></i> SFX</button>
+                    <button class="settings-btn" id="liteModeToggle"><i class="fas fa-feather-alt"></i> Lite</button>
+                </div>
+            </div>
+            <div class="progress-section">
+                <h3><i class="fas fa-tasks"></i> Progress</h3>
+                <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+                <p id="progressText">Level 1 - 0% Complete</p>
+            </div>
+            <div id="abilityCooldownsDisplay" class="achievements" style="margin-top:10px;">
+                <h3><i class="fas fa-star"></i> Abilities</h3>
+            </div>
+            <div class="achievements">
+                <h3><i class="fas fa-trophy"></i> Achievements</h3>
+                <div class="achievement" id="speedRunnerAchievement"><i class="fas fa-bolt"></i><span>Speed Runner</span></div>
+                <div class="achievement" id="explorerAchievement"><i class="fas fa-map-marked-alt"></i><span>Great Explorer</span></div>
+                <div class="achievement" id="masterAchievement"><i class="fas fa-crown"></i><span>Maze Master</span></div>
+                <div class="achievement" id="survivorAchievement"><i class="fas fa-heartbeat"></i><span>Flawless Victory</span></div>
+                <div class="achievement" id="keyMasterAchievement"><i class="fas fa-key"></i><span>Key Master</span></div>
+                <div class="achievement" id="noHintAchievement"><i class="fas fa-user-astronaut"></i><span>Pure Genius</span></div>
+                <div class="achievement" id="trapMasterAchievement"><i class="fas fa-cog"></i><span>Trap Master</span></div>
+                <div class="achievement" id="combatProAchievement"><i class="fas fa-fist-raised"></i><span>Combat Pro</span></div>
+            </div>
+            <div class="leaderboard">
+                <h3><i class="fas fa-medal"></i> Best Times</h3>
+                <div id="leaderboardList"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="game-header">
+                <h1 class="game-title"><i class="fas fa-dungeon"></i>MazeMaster Pro</h1>
+                <div class="game-stats">
+                    <div class="stat-card"><div class="stat-value" id="timeValue">00:00</div><div class="stat-label">Time</div></div>
+                    <div class="stat-card"><div class="stat-value" id="movesValue">0</div><div class="stat-label">Moves</div></div>
+                    <div class="stat-card"><div class="stat-value" id="healthValue">❤️❤️❤️</div><div class="stat-label">Health</div></div>
+                    <div class="stat-card"><div class="stat-value" id="keysValue">0/0</div><div class="stat-label">Keys</div></div>
+                    <div class="stat-card"><div class="stat-value" id="scoreValue">0</div><div class="stat-label">Score</div></div>
+                    <div class="stat-card"><div class="stat-value" id="levelValue">1</div><div class="stat-label">Level</div></div>
+                     <div class="stat-card power-ups-active" id="activePowerUpsContainer" style="display:none;min-width:120px;">
+                        <div class="stat-label">Effects</div><div class="stat-value" id="activePowerUpsValue"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="maze-container-wrapper" id="mazeContainerWrapper">
+                <div class="maze-container" id="mazeContainer">
+                    <div class="maze" id="maze"></div>
+                    <div class="particles" id="particles"></div>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="btn btn-info" onclick="toggleSidebar()"><span class="btn-icon">☰</span><span class="btn-label">Menu</span></button>
+                <button class="btn btn-success" onclick="game.newGame(game.difficulty, true)"><span class="btn-icon">▶️</span><span class="btn-label">New</span></button>
+                <button class="btn btn-warning" onclick="game.useHint()" id="hintBtn"><span class="btn-icon">💡</span><span class="btn-label">Hint</span><span class="btn-cooldown" id="hintCount">(3)</span></button>
+                <button class="btn btn-primary" onclick="game.resetCurrentLevel()"><span class="btn-icon">🔄</span><span class="btn-label">Reset</span></button>
+                <button class="btn btn-action" id="trapBtn" onclick="game.usePlayerAbility('trap')"><span class="btn-icon">💣</span><span class="btn-label">Trap</span><span class="btn-cooldown" id="trapCharges">(1)</span></button>
+                <button class="btn btn-action" id="freezeBtn" onclick="game.usePlayerAbility('freeze')"><span class="btn-icon">❄️</span><span class="btn-label">Freeze</span><span class="btn-cooldown" id="freezeCD"></span></button>
+                <button class="btn btn-action" id="shieldBtn" onclick="game.usePlayerAbility('shield')"><span class="btn-icon">🛡️</span><span class="btn-label">Shield</span><span class="btn-cooldown" id="shieldCD"></span></button>
+                <button class="btn btn-action" id="fireBtn" onclick="game.usePlayerAbility('fire')"><span class="btn-icon">🔥</span><span class="btn-label">Fire</span><span class="btn-cooldown" id="fireCD"></span></button>
+                <button class="btn btn-action" id="bulletBtn" onclick="game.usePlayerAbility('bullet')"><span class="btn-icon">💨</span><span class="btn-label">Dash</span><span class="btn-cooldown" id="bulletCD"></span></button>
+                <button class="btn btn-action" id="magicBtn" onclick="game.usePlayerAbility('magic')"><span class="btn-icon">✨</span><span class="btn-label">Magic</span><span class="btn-cooldown" id="magicCD"></span></button>
+                <button class="btn btn-info" onclick="showHelp()"><span class="btn-icon">❓</span><span class="btn-label">Help</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal show" id="gameModal"><div class="modal-content"><span class="modal-close" onclick="closeModal()">&times;</span><div id="modalContent"></div></div></div>
+    <div class="notification" id="notification"><i id="notificationIcon" class="fas fa-info-circle"></i><span id="notificationText"></span></div>
+
+    <script>
+        class MazeGame {
+            constructor() {
+                // Game State
+                this.maze = []; this.player = {x:1,y:1,lastMoveDir:{x:0,y:1}}; this.start = {x:1,y:1}; this.end = {x:1,y:1};
+                this.width = 21; this.height = 21; this.moves = 0; this.time = 0; this.score = 0; this.level = 1;
+                this.combo = 0; this.maxCombo = 0; this.gameStarted = false; this.gameCompleted = false; this.isGameOver = false;
+                this.usedHintThisLevel = false; this.trapsTriggeredThisLevel = 0; this.enemiesDefeatedThisLevel = 0;
+                this.isPlacingTrap = false; // Prevents trap spam
+
+                // Difficulty & Settings
+                this.difficulty = 'easy';
+                this.difficultySettings = {
+                    easy:     { size:15, hints:5, timeBonus:300, enemies:{grunt:1, ranger:0, tank:0, stealth:0}, mapTraps:2, keys:0, teleporters:0, maxHealth:5, baseMultiplier:1, trapCharges:3, enemyBaseHealth:1, tankHealthMultiplier: 2.5},
+                    medium:   { size:21, hints:3, timeBonus:240, enemies:{grunt:1, ranger:1, tank:1, stealth:0}, mapTraps:3, keys:1, teleporters:2, maxHealth:4, baseMultiplier:1.2, trapCharges:2, enemyBaseHealth:1, tankHealthMultiplier: 2.5},
+                    hard:     { size:27, hints:2, timeBonus:180, enemies:{grunt:2, ranger:1, tank:1, stealth:0}, mapTraps:5, keys:2, teleporters:4, maxHealth:3, baseMultiplier:1.5, trapCharges:2, enemyBaseHealth:2, tankHealthMultiplier: 3},
+                    expert:   { size:33, hints:1, timeBonus:120, enemies:{grunt:2, ranger:2, tank:2, stealth:1}, mapTraps:7, keys:3, teleporters:6, maxHealth:2, baseMultiplier:2, trapCharges:1, enemyBaseHealth:2, tankHealthMultiplier: 3},
+                    nightmare:{ size:39, hints:0, timeBonus:90,  enemies:{grunt:3, ranger:2, tank:2, stealth:1}, mapTraps:10,keys:4, teleporters:8, maxHealth:1, baseMultiplier:2.5, trapCharges:1, enemyBaseHealth:3, tankHealthMultiplier: 3.5}
+                };
+                this.currentSettings = this.difficultySettings[this.difficulty];
+                this.health = this.currentSettings.maxHealth; this.maxHealth = this.currentSettings.maxHealth;
+                this.hints = this.currentSettings.hints; this.baseMultiplier = this.currentSettings.baseMultiplier; this.multiplier = this.baseMultiplier;
+
+                // Game Elements & Abilities
+                this.powerUps = []; this.enemies = []; this.mapTraps = []; this.playerPlacedTraps = []; this.projectiles = [];
+                this.teleporters = []; this.keys = []; this.doors = []; this.collectedKeys = 0; this.requiredKeys = 0;
+                this.timeFreeze = 0; this.invulnerable = 0; this.speedBoost = 0; this.wallPass = 0;
+
+                this.trapCharges = this.currentSettings.trapCharges; this.maxTrapCharges = this.currentSettings.trapCharges;
+                this.abilityCooldowns = {trap:0,freeze:0,shield:0,fire:0,bullet:0,magic:0};
+                this.abilityDurations = {trap:5,freeze:20,shield:25,fire:8,bullet:5,magic:15};
+                this.playerShieldTurns = 0;
+
+                // Pathfinding & Rendering
+                this.visitedCells = new Set(); this.solution = []; this.activeHintCells = [];
+                
+                // Technical
+                this.soundEnabled = true; this.musicEnabled = true; this.liteMode = false; this.timerInterval = null;
+                this.audioContext = null; this.musicGainNode = null; this.musicBuffer = null; this.musicSource = null;
+                this.lastFrameTime = 0; this.fps = 60;
+
+                // Persistent Data
+                this.achievements = {speedRunner:false,explorer:false,master:false,survivor:false,keyMaster:false,noHintAchievement:false,trapMaster:false,combatPro:false};
+                this.bestTimes = {};
+            }
+
+            init() {
+                this.loadGameData();
+                this.setupEventListeners();
+                this.updateLeaderboardUI();
+                this.showWelcomeModal();
+            }
+            
+            startGameFromWelcome() {
+                this.getAudioContext();
+                this.loadBackgroundMusic();
+                this.newGame(this.difficulty, false);
+            }
+
+            getAudioContext() {
+                if (this.audioContext && this.audioContext.state !== 'closed') return;
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch(e){
+                    console.warn("Web Audio API not supported or context creation failed.", e);
+                    this.soundEnabled = false; this.musicEnabled = false;
+                }
+            }
+            
+            resumeAudioContext() {
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    this.audioContext.resume().then(() => {
+                        if (this.musicEnabled && !this.musicSource) {
+                            this.startBackgroundMusic();
+                        }
+                    });
+                }
+            }
+
+            adjustCellSize() {
+                const mazeWrapper = document.getElementById('mazeContainerWrapper');
+                const mazeContainer = document.getElementById('mazeContainer');
+                
+                if (!mazeWrapper || !mazeContainer || !this.width || !this.height) {
+                    console.warn("AdjustCellSize: Critical elements missing.");
+                    return;
+                }
+
+                // Get available space within the wrapper
+                const availableWidth = mazeWrapper.clientWidth;
+                const availableHeight = mazeWrapper.clientHeight;
+
+                // Get container's padding from CSS variable
+                const containerPadding = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--container-padding')) || 15;
+                const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-gap')) || 1;
+
+                // Calculate the space the grid itself can occupy
+                const gridAvailableWidth = availableWidth - (containerPadding * 2);
+                const gridAvailableHeight = availableHeight - (containerPadding * 2);
+
+                // Calculate cell size based on width and height, accounting for gaps
+                let cellSizeW = (gridAvailableWidth - (this.width - 1) * gap) / this.width;
+                let cellSizeH = (gridAvailableHeight - (this.height - 1) * gap) / this.height;
+                
+                // Use the smaller of the two to fit the maze
+                let cellSize = Math.floor(Math.min(cellSizeW, cellSizeH));
+
+                // Enforce a minimum size for usability
+                const minCellSize = 10; 
+                cellSize = Math.max(minCellSize, cellSize);
+                
+                // Adjust font size based on cell size for readability
+                let fontSizeRatio = 0.6;
+                if (cellSize < 18) fontSizeRatio = 0.7;
+                else if (cellSize > 35) fontSizeRatio = 0.55;
+                let finalFontSize = Math.floor(cellSize * fontSizeRatio);
+                finalFontSize = Math.max(8, finalFontSize); // Min font size
+
+                // Set the CSS variables
+                document.documentElement.style.setProperty('--cell-size', `${cellSize}px`);
+                document.documentElement.style.setProperty('--cell-font-size', `${finalFontSize}px`);
+            }
+
+
+            setupEventListeners() {
+                document.addEventListener('keydown',(e)=>this.handleKeyPress(e));
+                document.getElementById('difficultyButtons').addEventListener('click', (e) => {
+                    const btn = e.target.closest('.settings-btn');
+                    if (btn && btn.dataset.difficulty) {
+                        const newDifficulty = btn.dataset.difficulty;
+                        if (this.difficulty !== newDifficulty) {
+                            this.difficulty = newDifficulty;
+                            document.querySelectorAll('#difficultyButtons .settings-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            this.newGame(this.difficulty, true);
+                        }
+                    }
+                });
+                document.getElementById('musicToggle').addEventListener('click',() => this.toggleSetting('music'));
+                document.getElementById('soundToggle').addEventListener('click',() => this.toggleSetting('sound'));
+                document.getElementById('liteModeToggle').addEventListener('click',() => this.toggleSetting('liteMode'));
+
+                const mazeEl=document.getElementById('maze');
+                let touchStartX=0, touchStartY=0;
+                if (mazeEl) {
+                    mazeEl.addEventListener('touchstart',(e)=>{touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},{passive:true});
+                    mazeEl.addEventListener('touchend',(e)=>{if(!touchStartX||!touchStartY||!this.gameStarted||this.isGameOver)return;const touchEndX=e.changedTouches[0].clientX;const touchEndY=e.changedTouches[0].clientY;const deltaX=touchStartX-touchEndX;const deltaY=touchStartY-touchEndY;const threshold=25;if(Math.abs(deltaX)>Math.abs(deltaY)){if(Math.abs(deltaX)>threshold)this.movePlayer(deltaX>0?'left':'right');}else{if(Math.abs(deltaY)>threshold)this.movePlayer(deltaY>0?'up':'down');}touchStartX=0;touchStartY=0;},{passive:true});
+                }
+            }
+
+            generateMaze() {
+                this.currentSettings=this.difficultySettings[this.difficulty];
+                this.width=this.currentSettings.size; this.height=this.currentSettings.size;
+                this.maze=Array(this.height).fill(null).map(()=>Array(this.width).fill(1));const s=[];const v=new Set();
+                this.start={x:1,y:1};this.end={x:this.width-2,y:this.height-2};this.player={...this.start,lastMoveDir:{x:0,y:1}};
+                this.maze[this.start.y][this.start.x]=0;s.push(this.start);v.add(`${this.start.x},${this.start.y}`);
+                while(s.length>0){const c=s[s.length-1];const n=this.getUnvisitedNeighborsForGeneration(c,v);if(n.length>0){const nxt=n[Math.floor(Math.random()*n.length)];this.maze[c.y+(nxt.y-c.y)/2][c.x+(nxt.x-c.x)/2]=0;this.maze[nxt.y][nxt.x]=0;v.add(`${nxt.x},${nxt.y}`);s.push(nxt);}else s.pop();}
+                this.maze[this.end.y][this.end.x]=0;this.addGameElements();this.calculateSolution();this.visitedCells.clear();this.visitedCells.add(`${this.player.x},${this.player.y}`);
+            }
+            getUnvisitedNeighborsForGeneration(c,v){const n=[];const d=[{x:0,y:-2},{x:2,y:0},{x:0,y:2},{x:-2,y:0}];for(const i of d){const nX=c.x+i.x;const nY=c.y+i.y;if(nX>0&&nX<this.width-1&&nY>0&&nY<this.height-1&&!v.has(`${nX},${nY}`))n.push({x:nX,y:nY});}return n;}
+
+            addGameElements() {
+                this.powerUps=[];this.enemies=[];this.mapTraps=[];this.playerPlacedTraps=[];this.projectiles=[];this.teleporters=[];this.keys=[];this.doors=[];this.collectedKeys=0;
+                
+                // Apply long-term scaling for levels beyond the base difficulties
+                let levelMultiplier = this.level > 10 ? 1 + (this.level - 10) * 0.1 : 1;
+                let scaledSettings = JSON.parse(JSON.stringify(this.currentSettings));
+                
+                scaledSettings.enemyBaseHealth = Math.ceil(scaledSettings.enemyBaseHealth * levelMultiplier);
+                scaledSettings.tankHealthMultiplier = scaledSettings.tankHealthMultiplier * levelMultiplier;
+                Object.keys(scaledSettings.enemies).forEach(type => {
+                    scaledSettings.enemies[type] = Math.ceil(scaledSettings.enemies[type] * (this.level > 5 ? 1 + (this.level - 5) * 0.08 : 1));
+                });
+
+                this.requiredKeys = scaledSettings.keys;
+
+                const pC=[];for(let y=1;y<this.height-1;y++)for(let x=1;x<this.width-1;x++)if(this.maze[y][x]===0&&!(x===this.start.x&&y===this.start.y)&&!(x===this.end.x&&y===this.end.y))pC.push({x,y});
+                this.shuffleArray(pC);let cI=0;const plc=(l,cnt,cons)=>{for(let i=0;i<cnt&&cI<pC.length;i++)l.push(cons?cons(pC[cI++]):pC[cI++]);};
+                plc(this.keys,scaledSettings.keys);if(scaledSettings.keys>0)this.placeDoors();
+
+                Object.entries(scaledSettings.enemies).forEach(([type, count]) => {
+                    plc(this.enemies, count, (pos) => {
+                        let enemyHealth = scaledSettings.enemyBaseHealth;
+                        if (type === 'tank') enemyHealth = Math.floor(enemyHealth * scaledSettings.tankHealthMultiplier);
+                        return {
+                            ...pos, type, originalX: pos.x, originalY: pos.y,
+                            health: enemyHealth, maxHealth: enemyHealth,
+                            frozenTurns: 0, fireCooldown: 3 + Math.floor(Math.random()*3),
+                            aiState: 'idle', aiTimer: 0, chargeTarget: null, 
+                            stealthState: 'visible', stealthTimer: Math.floor(Math.random()*5), 
+                            targetX: null, targetY: null
+                        };
+                    });
+                });
+
+                plc(this.mapTraps,scaledSettings.mapTraps);
+                const nTP=Math.floor(scaledSettings.teleporters/2);for(let i=0;i<nTP&&cI<pC.length-1;i++)this.teleporters.push({from:pC[cI++],to:pC[cI++]});
+                const pUT=['health','freeze','speed','wallpass','invulnerable'];const nPUP=Math.min(pC.length-cI,2+Math.floor(this.level/4));
+                for(let i=0;i<nPUP&&cI<pC.length;i++)this.powerUps.push({...pC[cI++],type:pUT[Math.floor(Math.random()*pUT.length)]});
+            }
+            placeDoors(){if(this.requiredKeys===0)return;const pD=[];const d=[{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];for(const i of d){const dX=this.end.x+i.x;const dY=this.end.y+i.y;if(this.isValidMazeCoordinate(dX,dY)&&this.maze[dY][dX]===0){const tM=JSON.parse(JSON.stringify(this.maze));tM[dY][dX]=1;if(this.isPathPossible(tM,this.start,this.end))pD.push({x:dX,y:dY});}}this.shuffleArray(pD);this.doors=pD.slice(0,this.requiredKeys);}
+            isValidMazeCoordinate(x,y){return x>=0&&x<this.width&&y>=0&&y<this.height;}
+            isPathPossible(m,s,e){const q=[s];const v=new Set([`${s.x},${s.y}`]);const d=[{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];while(q.length>0){const c=q.shift();if(c.x===e.x&&c.y===e.y)return true;for(const i of d){const nX=c.x+i.x;const nY=c.y+i.y;if(nX>=0&&nX<m[0].length&&nY>=0&&nY<m.length&&m[nY][nX]===0&&!v.has(`${nX},${nY}`)){v.add(`${nX},${nY}`);q.push({x:nX,y:nY});}}}return false;}
+            shuffleArray(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+
+            handleKeyPress(e){if(!this.gameStarted||this.isGameOver||this.gameCompleted)return;const kM={'ArrowUp':'up','ArrowDown':'down','ArrowLeft':'left','ArrowRight':'right','w':'up','s':'down','a':'left','d':'right'};const dir=kM[e.key.toLowerCase()];if(dir){e.preventDefault();this.movePlayer(dir);}if(e.key.toLowerCase()==='h'){e.preventDefault();this.useHint();}}
+            movePlayer(dir){if(this.timeFreeze>0&&!this.playerShieldTurns>0)return;const drs={up:{x:0,y:-1},down:{x:0,y:1},left:{x:-1,y:0},right:{x:1,y:0}};const m=drs[dir];this.player.lastMoveDir=m;const nX=this.player.x+m.x;const nY=this.player.y+m.y;let cP=this.isValidMove(nX,nY);if(this.wallPass>0&&!cP&&this.isValidMazeCoordinate(nX,nY)&&this.maze[nY][nX]===1)cP=true;if(cP){this.player.x=nX;this.player.y=nY;this.moves++;this.combo++;this.maxCombo=Math.max(this.maxCombo,this.combo);this.visitedCells.add(`${nX},${nY}`);this.checkInteractions();if(!this.isGameOver&&!this.gameCompleted)this.moveGameElements();this.playSound('move');this.renderMaze();if(nX===this.end.x&&nY===this.end.y){if(this.collectedKeys>=this.requiredKeys)this.completeLevel();else this.showNotification(`Need ${this.requiredKeys-this.collectedKeys} more key(s)! 🔑`,'warning');}}else{this.playSound('wall');this.combo=0;}this.updateStats();}
+            isValidMove(x,y){if(!this.isValidMazeCoordinate(x,y))return false;const iDC=this.doors.some(d=>d.x===x&&d.y===y);if(iDC&&this.collectedKeys<this.requiredKeys)return false;return this.maze[y][x]===0||(iDC&&this.collectedKeys>=this.requiredKeys);}
+
+            checkInteractions(){const pX=this.player.x;const pY=this.player.y;const kI=this.keys.findIndex(k=>k.x===pX&&k.y===pY);if(kI!==-1){this.keys.splice(kI,1);this.collectedKeys++;this.score+=100*this.multiplier;this.playSound('key');this.showNotification(`Key! ${this.collectedKeys}/${this.requiredKeys} 🗝️`,'success');if(this.collectedKeys===this.requiredKeys&&this.requiredKeys>0){this.showNotification('Doors Unlocked! 🚪','success');this.playSound('doorOpen');}}
+            const pUI=this.powerUps.findIndex(pu=>pu.x===pX&&pu.y===pY);if(pUI!==-1){const pU=this.powerUps.splice(pUI,1)[0];this.activatePowerUp(pU.type);this.score+=50*this.multiplier;}
+            const tP=this.teleporters.find(tp=>tp.from.x===pX&&tp.from.y===pY);if(tP){this.player.x=tP.to.x;this.player.y=tP.to.y;this.visitedCells.add(`${this.player.x},${this.player.y}`);this.score+=25*this.multiplier;this.playSound('teleport');this.showNotification('Teleported! 🌀','info');this.checkInteractions();return;}
+            if(this.mapTraps.some(t=>t.x===pX&&t.y===pY)){if(this.invulnerable===0&&this.playerShieldTurns===0){this.takeDamage(1);this.showNotification('Map Trap! 💀','error');this.combo=0;}else this.showNotification('Trap avoided! ✨','info');}
+            this.enemies.forEach(enemy => { if (enemy.x === pX && enemy.y === pY && enemy.aiState !== 'charging') { if(this.invulnerable===0 && this.playerShieldTurns === 0){this.takeDamage(1);this.showNotification(`Bumped ${enemy.type}! 👹`, 'error');this.combo=0;} else {this.showNotification('Enemy bounced! ✨', 'info');}}});
+            const pTI=this.playerPlacedTraps.findIndex(pt=>pt.x===pX&&pt.y===pY);if(pTI!==-1){this.playerPlacedTraps.splice(pTI,1);this.showNotification('Stepped on own trap!','warning');}}
+
+            activatePowerUp(type){const dur=10+Math.floor(this.level/5);this.playSound('powerup');switch(type){case 'health':this.health=Math.min(this.health+1,this.maxHealth);this.showNotification('Health! ❤️','success');break;case 'freeze':this.timeFreeze=dur;this.showNotification(`Enemy Freeze ${dur}s! ❄️`,'info');break;case 'speed':this.speedBoost=dur;this.multiplier=this.baseMultiplier*1.5;this.showNotification(`Speed Boost ${dur}s! ⚡`,'info');break;case 'wallpass':this.wallPass=dur;this.showNotification(`Wall Pass ${dur}s! 👻`,'info');break;case 'invulnerable':this.invulnerable=dur;this.showNotification(`Invulnerable ${dur}s! 🛡️`,'info');break;}this.updateStats();this.updatePowerUpDisplay();}
+
+            usePlayerAbility(abil){if(this.isPlacingTrap) return;if(this.abilityCooldowns[abil]>0&&abil!=='trap'){this.showNotification(`${abil.toUpperCase()} on CD!(${this.abilityCooldowns[abil]}s)`,'warning');return;}if(abil==='trap'&&this.trapCharges<=0){this.showNotification('No trap charges!','warning');return;}
+            switch(abil){case 'trap':this.placePlayerTrap();break;case 'freeze':this.activateAoEFreeze();break;case 'shield':this.activatePlayerShield();break;case 'fire':this.launchProjectile('fire');break;case 'bullet':this.launchProjectile('bullet');break;case 'magic':this.activateMagicPush();break;}
+            if(abil!=='trap' || (abil === 'trap' && this.trapCharges < this.maxTrapCharges && this.playerPlacedTraps.length > 0) ) { if (abil === 'trap' && this.playerPlacedTraps.some(t => t.x === this.player.x + this.player.lastMoveDir.x && t.y === this.player.y + this.player.lastMoveDir.y)) {this.abilityCooldowns[abil] = this.abilityDurations[abil];} else if (abil !== 'trap') {this.abilityCooldowns[abil] = this.abilityDurations[abil];}}
+            this.updateAbilityButtonUI();}
+
+            placePlayerTrap(){const tX=this.player.x+this.player.lastMoveDir.x;const tY=this.player.y+this.player.lastMoveDir.y;if(this.isValidMove(tX,tY)&&!this.playerPlacedTraps.some(t=>t.x===tX&&t.y===tY)&&!this.enemies.some(e=>e.x===tX&&e.y===tY)){this.isPlacingTrap = true; this.playerPlacedTraps.push({x:tX,y:tY,turnsLeft:5+this.level,triggered:false});this.trapCharges--;this.playSound('trapSet');this.showNotification('Trap set! 💣','success');this.abilityCooldowns.trap=this.abilityDurations.trap;setTimeout(() => this.isPlacingTrap = false, 200);}else{this.showNotification('Cannot place trap!','warning');return;}this.renderMaze();this.updateAbilityButtonUI();}
+            activateAoEFreeze(){this.playSound('freezeCast');let aff=0;this.enemies.forEach(e=>{const d=this.heuristic(e,this.player);if(d<=3){e.frozenTurns=5+Math.floor(this.level/3);if(e.type==='tank' && e.aiState === 'charging') e.aiState = 'cooldown';aff++;this.addVisualEffect(e.x,e.y,'freeze');}});if(aff>0)this.showNotification(`Froze ${aff} enemies! ❄️`,'info');else this.showNotification('No enemies in range.','info');this.renderMaze();}
+            activatePlayerShield(){this.playerShieldTurns=8+Math.floor(this.level/2);this.playSound('shieldUp');this.showNotification(`Shield for ${this.playerShieldTurns}s! 🛡️`,'success');this.updatePowerUpDisplay();this.renderMaze();}
+            launchProjectile(type){this.playSound(type==='fire'?'fireball':'bullet');const p={x:this.player.x+this.player.lastMoveDir.x,y:this.player.y+this.player.lastMoveDir.y,dirX:this.player.lastMoveDir.x,dirY:this.player.lastMoveDir.y,type:type,life:type==='fire'?5:3,owner:'player'};if(this.isValidMazeCoordinate(p.x,p.y)&&(this.maze[p.y][p.x]===0||this.enemies.some(e=>e.x===p.x&&e.y===p.y))){this.projectiles.push(p);this.addVisualEffect(p.x,p.y,type);this.showNotification(`${type==='fire'?'Fireball':'Dash'} out!`,'info');}else{this.showNotification(`Can't launch ${type}!`,'warning');this.abilityCooldowns[type]=0;}this.renderMaze();}
+            activateMagicPush(){this.playSound('magicCast');let affC=0;this.enemies.forEach(e=>{const dX=e.x-this.player.x;const dY=e.y-this.player.y;if(Math.abs(dX)<=2&&Math.abs(dY)<=2){const pTX=e.x+Math.sign(dX);const pTY=e.y+Math.sign(dY);if(this.isValidMoveForEnemy(pTX,pTY,e)&&!this.enemies.some(en=> en !== e && en.x===pTX&&en.y===pTY)){e.x=pTX;e.y=pTY;if(e.type === 'tank' && e.aiState === 'charging') e.aiState = 'cooldown'; affC++;}this.addVisualEffect(e.x,e.y,'magic');}});if(affC>0)this.showNotification(`Pushed ${affC} enemies! ✨`,'info');else this.showNotification('No enemies to push.','info');this.renderMaze();}
+
+            moveGameElements() {this.moveProjectiles();if (this.timeFreeze > 0 && !(this.playerShieldTurns > 0 && this.speedBoost > 0) ) return;this.moveEnemies();}
+
+            moveProjectiles() {
+                for(let i=this.projectiles.length-1;i>=0;i--){
+                    const p=this.projectiles[i]; p.life--; if(p.life<=0){this.projectiles.splice(i,1);continue;}
+                    const nX=p.x+p.dirX; const nY=p.y+p.dirY;
+                    let hitEnemy=this.enemies.find(e=>e.x===p.x&&e.y===p.y && e.stealthState === 'visible');
+                    if(!hitEnemy && this.isValidMazeCoordinate(nX,nY)) hitEnemy=this.enemies.find(e=>e.x===nX&&e.y===nY && e.stealthState === 'visible');
+                    if(p.owner === 'player' && hitEnemy){this.damageEnemy(hitEnemy,p.type==='fire'?2:1);this.addVisualEffect(hitEnemy.x,hitEnemy.y,p.type);this.projectiles.splice(i,1);continue;}
+                    if(p.owner === 'enemy' && nX === this.player.x && nY === this.player.y) {if(this.invulnerable === 0 && this.playerShieldTurns === 0) this.takeDamage(1); else this.showNotification('Enemy shot blocked!','info');this.addVisualEffect(nX, nY, 'enemybullet'); this.projectiles.splice(i,1); continue;}
+                    if(this.isValidMazeCoordinate(nX,nY) && (this.maze[nY][nX]===0 || this.playerPlacedTraps.some(pt => pt.x ===nX && pt.y === nY)) ){p.x=nX;p.y=nY;this.addVisualEffect(p.x,p.y,p.type);} else if (this.isValidMazeCoordinate(nX,nY) && this.maze[nY][nX]===1 && (p.type==='fire'||p.type==='enemybullet') ){this.addVisualEffect(nX,nY,p.type);this.projectiles.splice(i,1);continue;} else { this.projectiles.splice(i,1); }
+                }
+            }
+            damageEnemy(enemy,amount){enemy.health-=amount;this.playSound('enemyHit');if(enemy.health<=0){const idx=this.enemies.indexOf(enemy);if(idx>-1)this.enemies.splice(idx,1);this.score+=150*this.multiplier;this.enemiesDefeatedThisLevel++;this.showNotification('Enemy Defeated!🔥','success');this.playSound('enemyDefeat');}else {this.showNotification('Enemy Hit!','warning'); if(enemy.type ==='tank' && enemy.aiState === 'charging') {enemy.aiState = 'cooldown'; enemy.aiTimer = 3; this.showNotification('Tank charge interrupted!','info');} } }
+
+            moveEnemies() {
+                if(this.liteMode && this.fps < 40) return; // Performance saving
+                this.enemies.forEach(enemy => {
+                    if (enemy.frozenTurns > 0) { enemy.frozenTurns--; return; }
+                    if (this.speedBoost > 0 && Math.random() < 0.33 && enemy.type !== 'boss') return;
+                    if (enemy.type === 'ranger') this.aiRanger(enemy); else if (enemy.type === 'tank') this.aiTank(enemy); else if (enemy.type === 'stealth') this.aiStealth(enemy); else this.aiGrunt(enemy);
+                    if (enemy.x===this.player.x && enemy.y===this.player.y && enemy.stealthState==='visible' && enemy.aiState !== 'charging' && this.invulnerable===0 && this.playerShieldTurns === 0) { this.takeDamage(1);this.showNotification(`Hit by ${enemy.type}!👹`,'error');this.combo=0;}
+                    const pTI=this.playerPlacedTraps.findIndex(pt=>pt.x===enemy.x&&pt.y===enemy.y);
+                    if(pTI!==-1){this.playerPlacedTraps[pTI].triggered = true; setTimeout(()=>this.playerPlacedTraps.splice(pTI,1), 350);enemy.frozenTurns=3+Math.floor(this.level/2);if(enemy.type === 'tank' && enemy.aiState === 'charging') enemy.aiState = 'cooldown';this.trapsTriggeredThisLevel++;this.playSound('trapSpring');this.showNotification(`${enemy.type} trapped!💣❄️`,'success');this.addVisualEffect(enemy.x,enemy.y,'trapTriggered');}
+                });
+            }
+
+            aiGrunt(enemy) {const pM=[];const dirs=[{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];this.shuffleArray(dirs);let bM=null;let mD=Infinity;for(const d of dirs){const nX=enemy.x+d.x;const nY=enemy.y+d.y;if(this.isValidMoveForEnemy(nX,nY,enemy)){pM.push({x:nX,y:nY});const dTP=this.heuristic({x:nX,y:nY},this.player);if(dTP<mD){mD=dTP;bM={x:nX,y:nY};}}}if(bM&&Math.random()<0.85){enemy.x=bM.x;enemy.y=bM.y;}else if(pM.length>0){const rM=pM[Math.floor(Math.random()*pM.length)];enemy.x=rM.x;enemy.y=rM.y;}}
+            aiRanger(enemy) {if (enemy.fireCooldown > 0) enemy.fireCooldown--;const distToPlayer = this.heuristic(enemy, this.player);const preferredRangeMin = 3;const preferredRangeMax = 5 + Math.floor(this.level / 4);const lineOfSight = this.hasLineOfSight(enemy, this.player, preferredRangeMax + 2);if (lineOfSight && distToPlayer >= preferredRangeMin && distToPlayer <= preferredRangeMax && enemy.fireCooldown <= 0) {const dirX = Math.sign(this.player.x - enemy.x); const dirY = Math.sign(this.player.y - enemy.y);let fireDir = {x:0, y:0};const linePoints = this.bresenhamLine(enemy.x, enemy.y, this.player.x, this.player.y);if (linePoints.length > 1) {fireDir.x = Math.sign(linePoints[1].x - enemy.x);fireDir.y = Math.sign(linePoints[1].y - enemy.y);} else {fireDir = (Math.abs(dirX) > Math.abs(dirY)) ? {x:dirX, y:0} : {x:0, y:dirY};if ((fireDir.x === 0 && fireDir.y === 0) && (dirX !==0 || dirY !==0) ) {fireDir.x = dirX !== 0 ? dirX : 0;fireDir.y = dirY !== 0 && fireDir.x === 0 ? dirY : 0;}}if (fireDir.x !==0 || fireDir.y !==0) {this.projectiles.push({x:enemy.x+fireDir.x,y:enemy.y+fireDir.y,dirX:fireDir.x,dirY:fireDir.y,type:'enemybullet',life:preferredRangeMax + 2,owner:'enemy'});this.playSound('enemyShoot'); enemy.fireCooldown = 2 + Math.max(0, 2 - Math.floor(this.level/4));this.addVisualEffect(enemy.x, enemy.y, 'enemybullet');}} else if (distToPlayer > preferredRangeMax) { this.aiGrunt(enemy); } else if (distToPlayer < preferredRangeMin ) {const awayDirs = [];if (this.player.x < enemy.x && this.isValidMoveForEnemy(enemy.x + 1, enemy.y, enemy)) awayDirs.push({x:1, y:0});if (this.player.x > enemy.x && this.isValidMoveForEnemy(enemy.x - 1, enemy.y, enemy)) awayDirs.push({x:-1, y:0});if (this.player.y < enemy.y && this.isValidMoveForEnemy(enemy.x, enemy.y + 1, enemy)) awayDirs.push({x:0, y:1});if (this.player.y > enemy.y && this.isValidMoveForEnemy(enemy.x, enemy.y - 1, enemy)) awayDirs.push({x:0, y:-1});if (awayDirs.length > 0) {const bestAwayMove = awayDirs.sort((a,b) => this.heuristic({x:enemy.x+b.x, y:enemy.y+b.y}, this.player) - this.heuristic({x:enemy.x+a.x, y:enemy.y+a.y}, this.player))[0]; enemy.x += bestAwayMove.x; enemy.y += bestAwayMove.y; } else { this.aiGrunt(enemy); }} else { this.aiGrunt(enemy); }}
+            aiTank(enemy) {const distToPlayer = this.heuristic(enemy, this.player);const chargeRange = 4 + Math.floor(this.level / 5); const chargePrepareTime = 2; const chargeCooldownTime = 5 + Math.floor(Math.random() * 3); const chargeDamage = 2;if (enemy.aiTimer > 0) enemy.aiTimer--;switch(enemy.aiState) {case 'idle':if (this.hasLineOfSight(enemy, this.player, chargeRange + 3) && distToPlayer <= chargeRange) {enemy.aiState = 'preparing_charge';enemy.aiTimer = chargePrepareTime;enemy.chargeTarget = {x: this.player.x, y: this.player.y}; this.playSound('tankRoar');} else { if (Math.random() < 0.4) this.aiGrunt(enemy);}break;case 'preparing_charge':if (enemy.aiTimer <= 0) {enemy.aiState = 'charging';this.playSound('tankCharge');}if(!this.hasLineOfSight(enemy, enemy.chargeTarget, chargeRange + 2)) {enemy.aiState = 'cooldown';enemy.aiTimer = chargeCooldownTime / 2; this.showNotification('Tank charge fizzled!', 'info');}break;case 'charging':const dirX = Math.sign(enemy.chargeTarget.x - enemy.x);const dirY = Math.sign(enemy.chargeTarget.y - enemy.y);const nextX = enemy.x + dirX;const nextY = enemy.y + dirY;if (enemy.x === enemy.chargeTarget.x && enemy.y === enemy.chargeTarget.y) { enemy.aiState = 'cooldown';enemy.aiTimer = chargeCooldownTime;if(this.heuristic(enemy,this.player) <=1 && this.invulnerable === 0 && this.playerShieldTurns === 0){ this.takeDamage(chargeDamage-1); this.showNotification('Tank nearby impact!','warning');}} else if (this.isValidMoveForEnemy(nextX, nextY, enemy)) {enemy.x = nextX; enemy.y = nextY;if (enemy.x === this.player.x && enemy.y === this.player.y) {if (this.invulnerable === 0 && this.playerShieldTurns === 0) this.takeDamage(chargeDamage); else this.showNotification('Tank charge blocked by shield!', 'info');this.showNotification('Tank Charge Hit! 💥','error');enemy.aiState = 'cooldown'; enemy.aiTimer = chargeCooldownTime;}} else { enemy.aiState = 'cooldown';enemy.aiTimer = chargeCooldownTime;this.playSound('wall');this.showNotification('Tank crashed!','info');}break;case 'cooldown':if (enemy.aiTimer <= 0) {enemy.aiState = 'idle';}if (Math.random() < 0.2) this.aiGrunt(enemy);break;}}
+            aiStealth(enemy) {if (enemy.stealthTimer > 0) enemy.stealthTimer--;if (enemy.stealthState === 'visible' && enemy.stealthTimer <= 0 && this.heuristic(enemy, this.player) > 2) {enemy.stealthState = 'invisible'; enemy.stealthTimer = 4 + Math.floor(Math.random() * 4); this.playSound('stealthOn');} else if (enemy.stealthState === 'invisible' && (enemy.stealthTimer <= 0 || this.heuristic(enemy, this.player) <=1 )) {enemy.stealthState = 'visible'; enemy.stealthTimer = 6 + Math.floor(Math.random() * 6); this.playSound('stealthOff');}this.aiGrunt(enemy);}
+
+            bresenhamLine(x0, y0, x1, y1) {const points = []; const dx = Math.abs(x1 - x0); const dy = Math.abs(y1 - y0);const sx = (x0 < x1) ? 1 : -1; const sy = (y0 < y1) ? 1 : -1; let err = dx - dy;points.push({ x: x0, y: y0 });while (x0 !== x1 || y0 !== y1) {const e2 = 2 * err;if (e2 > -dy) { err -= dy; x0 += sx; }if (e2 < dx) { err += dx; y0 += sy; }points.push({ x: x0, y: y0 });if (points.length > Math.max(this.width, this.height) * 2) break;}return points;}
+            hasLineOfSight(p1, p2, maxDist = 10) {const dist = this.heuristic(p1, p2); if (dist > maxDist) return false;const line = this.bresenhamLine(p1.x, p1.y, p2.x, p2.y);for (let i = 1; i < line.length -1; i++) { const point = line[i]; if (!this.isValidMazeCoordinate(point.x, point.y) || this.maze[point.y][point.x] === 1) return false; }return true;}
+            isValidMoveForEnemy(x,y,enemy){if(!this.isValidMazeCoordinate(x,y))return false;const iDC=this.doors.some(d=>d.x===x&&d.y===y);if(iDC&&this.collectedKeys<this.requiredKeys)return false;if(this.enemies.some(e=>e!==enemy&&e.x===x&&e.y===y))return false;if(this.mapTraps.some(t=>t.x===x&&t.y===y)&&enemy.type!=='tank')return false;return this.maze[y][x]===0||(x===this.player.x&&y===this.player.y)||(iDC&&this.collectedKeys>=this.requiredKeys);}
+
+            newGame(diff=this.difficulty,playSnd=true){if(this.timerInterval)clearInterval(this.timerInterval);this.difficulty=diff;this.currentSettings=this.difficultySettings[this.difficulty];this.maxHealth=this.currentSettings.maxHealth;this.health=this.maxHealth;this.hints=this.currentSettings.hints;this.baseMultiplier=this.currentSettings.baseMultiplier;this.multiplier=this.baseMultiplier;this.moves=0;this.time=0;this.gameStarted=true;this.gameCompleted=false;this.isGameOver=false;this.usedHintThisLevel=false;this.combo=0;this.trapsTriggeredThisLevel=0;this.enemiesDefeatedThisLevel=0;this.timeFreeze=0;this.invulnerable=0;this.speedBoost=0;this.wallPass=0;this.playerShieldTurns=0;this.trapCharges=this.currentSettings.trapCharges;this.maxTrapCharges=this.currentSettings.trapCharges;Object.keys(this.abilityCooldowns).forEach(k=>this.abilityCooldowns[k]=0);this.projectiles=[];this.playerPlacedTraps=[];this.generateMaze();this.adjustCellSize(); this.renderMaze();this.startTimer();this.updateStats();this.updatePowerUpDisplay();this.updateAbilityButtonUI();if(playSnd)this.playSound('start');this.showNotification(`${this.difficulty.toUpperCase()} Lvl ${this.level} Ready!🚀`,'info');if(this.musicEnabled)this.startBackgroundMusic();else this.stopBackgroundMusic();}
+            resetCurrentLevel(){this.showNotification(`Lvl ${this.level} Reset!🔄`,'info');this.health=this.maxHealth;this.moves=0;this.time=0;this.score=Math.max(0,this.score-200*this.level);this.player={...this.start,lastMoveDir:{x:0,y:1}};this.visitedCells.clear();this.visitedCells.add(`${this.player.x},${this.player.y}`);this.combo=0;this.timeFreeze=0;this.invulnerable=0;this.speedBoost=0;this.wallPass=0;this.playerShieldTurns=0;this.trapCharges=this.currentSettings.trapCharges;Object.keys(this.abilityCooldowns).forEach(k=>this.abilityCooldowns[k]=0);this.projectiles=[];this.playerPlacedTraps=[];this.enemies.forEach(e=>{e.x=e.originalX;e.y=e.originalY;e.health=e.maxHealth;e.frozenTurns=0;e.aiState='idle';e.aiTimer=0;e.stealthState='visible';e.fireCooldown=0;});if(this.timerInterval)clearInterval(this.timerInterval);this.adjustCellSize();this.renderMaze();this.startTimer();this.updateStats();this.updatePowerUpDisplay();this.updateAbilityButtonUI();this.playSound('start');}
+            startTimer(){if(this.timerInterval)clearInterval(this.timerInterval);this.lastFrameTime = performance.now();this.timerInterval=setInterval(()=>{if(this.gameStarted&&!this.gameCompleted&&!this.isGameOver){this.time++;const now = performance.now();this.fps = 1000 / (now - this.lastFrameTime);this.lastFrameTime = now;this.gameTick();this.updateStats();this.updateAbilityButtonUI();}},1000);}
+            gameTick(){let pC=false;let aC=false;if(this.timeFreeze>0){this.timeFreeze--;if(this.timeFreeze===0){this.showNotification('Enemy freeze off!⏳','info');pC=true;}}if(this.invulnerable>0){this.invulnerable--;if(this.invulnerable===0){this.showNotification('Invulnerable off!✨','info');pC=true;}}if(this.speedBoost>0){this.speedBoost--;if(this.speedBoost===0){this.multiplier=this.baseMultiplier;this.showNotification('Speed boost off!💨','info');pC=true;}}if(this.wallPass>0){this.wallPass--;if(this.wallPass===0){this.showNotification('Wall pass off!🧱','info');pC=true;}}if(this.playerShieldTurns>0){this.playerShieldTurns--;if(this.playerShieldTurns===0){this.showNotification('Shield down!🛡️','info');pC=true;}}
+            Object.keys(this.abilityCooldowns).forEach(k=>{if(this.abilityCooldowns[k]>0){this.abilityCooldowns[k]--;aC=true;}});
+            this.playerPlacedTraps.forEach((t,i)=>{if(t && t.turnsLeft){t.turnsLeft--;if(t.turnsLeft<=0){this.playerPlacedTraps.splice(i,1);this.showNotification('A trap vanished.','info');this.renderMaze();}}});
+            if(pC)this.updatePowerUpDisplay();if(aC)this.updateAbilityButtonUI();}
+            takeDamage(amt=1){if((this.invulnerable>0||this.playerShieldTurns>0)||this.isGameOver||this.gameCompleted)return;this.health-=amt;this.playSound('damage');const pL=document.querySelector('.cell.player');if(pL && !this.liteMode){pL.style.animation='shakePlayer 0.4s';setTimeout(()=>{if(pL) pL.style.animation='pulsePlayer 1.0s infinite ease-in-out';},400);}if(this.health<=0){this.health=0;this.gameOver();}this.updateStats();}
+            gameOver(){this.isGameOver=true;this.gameStarted=false;if(this.timerInterval)clearInterval(this.timerInterval);this.playSound('gameOver');this.stopBackgroundMusic();const m=document.getElementById('gameModal');const c=document.getElementById('modalContent');if(m&&c){c.innerHTML=`<div><h2><i class="fas fa-skull"></i> Game Over!</h2><p style="font-size:1.1rem;margin:12px 0;">Defeated on Level ${this.level}.</p><p><strong>Score:</strong> ${this.score}</p><p><strong>Max Combo:</strong> ${this.maxCombo}</p><div style="margin-top:20px;"><button class="btn btn-success" onclick="game.newGame('${this.difficulty}',true)"><i class="fas fa-redo"></i> Retry Level</button><button class="btn btn-primary" onclick="game.level=1; game.score=0; game.newGame('easy',true)"><i class="fas fa-home"></i> Main Menu</button></div></div>`;m.classList.add('show');}}
+            completeLevel(){this.gameCompleted=true;this.gameStarted=false;if(this.timerInterval)clearInterval(this.timerInterval);this.playSound('victory');this.createParticleEffect(document.querySelector('.cell.end'));this.stopBackgroundMusic();const fT=this.time;this.score+=Math.max(0,(this.currentSettings.timeBonus-fT)*15*this.multiplier);this.score+=this.health*75*this.multiplier;this.score=Math.round(this.score);this.checkAndUnlockAchievements(fT);this.updateBestTime(this.difficulty,fT);this.saveGameData();const e=this.solution.length>0&&this.moves>0?Math.round((this.solution.length/this.moves)*100):0;const g=this.getGrade(e,fT);const m=document.getElementById('gameModal');const c=document.getElementById('modalContent');if(m&&c){c.innerHTML=`<div><h2>🎉 Level ${this.level} Victorious! 🎉</h2><div style="font-size:3rem;margin:12px 0;">${g.emoji}</div><h3>Grade: ${g.letter}</h3><div style="margin:12px 0;font-size:0.9rem;text-align:left;display:inline-block;"><p><strong>Time:</strong> ${this.formatTime(fT)}</p><p><strong>Moves:</strong> ${this.moves} (Optimal: ${this.solution.length})</p><p><strong>Efficiency:</strong> ${e}%</p><p><strong>Score:</strong> ${this.score}</p></div><p style="color:#fde047;font-weight:600;margin-top:8px;">${g.message}</p><div style="margin-top:20px;"><button class="btn btn-success" onclick="game.advanceLevel()"><i class="fas fa-arrow-right"></i> Next Level (${this.level+1})</button></div></div>`;m.classList.add('show');}}
+            advanceLevel(){closeModal();this.level++;this.newGame(this.difficulty,true);}
+
+            renderMaze() {
+                const mazeEl=document.getElementById('maze'); if(!mazeEl) return;
+                mazeEl.innerHTML='';
+                mazeEl.style.gridTemplateColumns=`repeat(${this.width}, var(--cell-size))`;
+                mazeEl.style.gridTemplateRows=`repeat(${this.height}, var(--cell-size))`;
+
+                const icons={player:'😀',start:'🚀',end:'🏁',key:'🗝️',enemyGrunt:'👹',enemyRanger:'🏹',enemyTank:'🗿',enemyStealth:'👻',mapTrap:'💀',teleporter:'🌀',door:'🚪',playerTrap:'💣',fire:'🔥',bullet:'💨',enemybullet:'☄️',powerup_health:'💊',powerup_freeze:'❄️',powerup_speed:'⚡',powerup_wallpass:'👻',powerup_invulnerable:'🛡️'};
+                for(let y=0;y<this.height;y++){for(let x=0;x<this.width;x++){const c=document.createElement('div');c.className='cell';c.dataset.x=x;c.dataset.y=y;let txt='';
+                    if(this.maze[y][x]===1)c.classList.add('wall');else c.classList.add('path');
+                    if(x===this.start.x&&y===this.start.y){c.classList.add('start');txt=icons.start;}
+                    if(x===this.end.x&&y===this.end.y){c.classList.add('end');txt=(this.collectedKeys>=this.requiredKeys)?icons.end:'🔒';if(this.collectedKeys<this.requiredKeys)c.classList.add('locked');}
+                    if(this.doors.some(d=>d.x===x&&d.y===y)){c.classList.add('door');txt=icons.door;if(this.collectedKeys>=this.requiredKeys)c.classList.add('open');}
+                    if(this.keys.some(k=>k.x===x&&k.y===y)){c.classList.add('key');txt=icons.key;}
+                    const enemyAtCell=this.enemies.find(e=>e.x===x&&e.y===y);
+                    if(enemyAtCell){c.classList.add('enemy',`enemy-${enemyAtCell.type}`);txt=icons[`enemy${enemyAtCell.type.charAt(0).toUpperCase()+enemyAtCell.type.slice(1)}`]||icons.enemyGrunt;if(enemyAtCell.frozenTurns>0)c.classList.add('frozen');if(enemyAtCell.stealthState==='invisible')c.classList.add('invisible');if(enemyAtCell.type==='tank'&&enemyAtCell.aiState==='preparing_charge')c.classList.add('preparing-charge');}
+                    if(this.mapTraps.some(t=>t.x===x&&t.y===y))c.classList.add('trap');
+                    if(this.teleporters.some(tp=>(tp.from.x===x&&tp.from.y===y)||(tp.to.x===x&&tp.to.y===y))){c.classList.add('teleporter');txt=icons.teleporter;}
+                    const pUp=this.powerUps.find(pu=>pu.x===x&&pu.y===y);if(pUp){c.classList.add('powerup',`powerup-${pUp.type}`);txt=icons[`powerup_${pUp.type}`]||'⭐';}
+                    const pTrap=this.playerPlacedTraps.find(pt=>pt.x===x&&pt.y===y);if(pTrap){c.classList.add('player-trap');txt=icons.playerTrap;if(pTrap.triggered)c.classList.add('triggered');}
+                    this.projectiles.forEach(p=>{if(p.x===x&&p.y===y){c.classList.add(`effect-${p.type}`);txt=icons[p.type];}});
+                    if(x===this.player.x&&y===this.player.y){c.classList.add('player');txt=this.playerShieldTurns>0?icons.powerup_invulnerable:(this.invulnerable>0?icons.powerup_invulnerable:(this.wallPass>0?icons.powerup_wallpass:icons.player));}
+                    if(this.visitedCells.has(`${x},${y}`)&&!(x===this.player.x&&y===this.player.y))c.classList.add('visited');
+                    if (this.activeHintCells && this.activeHintCells.some(hc => hc.x === x && hc.y ===y)) { c.classList.add('solution-hint'); }
+                    c.innerHTML=txt;mazeEl.appendChild(c);}}
+            }
+            addVisualEffect(x,y,effType,dur=350){if(this.liteMode) return; const cl=document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);if(cl){const eC=`effect-${effType}`;cl.classList.add(eC);setTimeout(()=>{cl.classList.remove(eC);},dur);}}
+            updateStats(){const timeEl=document.getElementById('timeValue');if(timeEl)timeEl.textContent=this.formatTime(this.time);const movesEl=document.getElementById('movesValue');if(movesEl)movesEl.textContent=this.moves;const healthEl=document.getElementById('healthValue');if(healthEl){let hH='';for(let i=0;i<this.maxHealth;i++)hH+=(i<this.health)?'❤️':'🖤';healthEl.textContent=hH;}const keysEl=document.getElementById('keysValue');if(keysEl)keysEl.textContent=`${this.collectedKeys}/${this.requiredKeys}`;const scoreEl=document.getElementById('scoreValue');if(scoreEl)scoreEl.textContent=this.score;const levelEl=document.getElementById('levelValue');if(levelEl)levelEl.textContent=this.level;const hintCountEl=document.getElementById('hintCount');if(hintCountEl)hintCountEl.textContent=`(${this.hints})`;
+            let p=0;if(this.solution&&this.solution.length>1){const pPIS=this.solution.findIndex(ps=>ps.x===this.player.x&&ps.y===this.player.y);if(pPIS!==-1)p=(pPIS/(this.solution.length-1))*100;else{const dPTE=this.heuristic(this.player,this.end);const dSTE=this.heuristic(this.start,this.end);if(dSTE>0)p=Math.max(0,Math.min(100,(1-(dPTE/dSTE))*100));else if(this.player.x===this.end.x&&this.player.y===this.end.y)p=100;}}else if(this.player.x===this.end.x&&this.player.y===this.end.y)p=100;
+            const progFill=document.getElementById('progressFill');if(progFill)progFill.style.width=`${Math.round(p)}%`;const progText=document.getElementById('progressText');if(progText)progText.textContent=`Lvl ${this.level}-${Math.round(p)}% Path`;}
+            updatePowerUpDisplay(){const c=document.getElementById('activePowerUpsContainer');const d=document.getElementById('activePowerUpsValue');if(!c||!d)return;d.innerHTML='';let hA=false;const aI=(t,ic,r)=>{d.innerHTML+=`<span title="${t}:${r}s">${ic}</span>`;hA=true;};if(this.timeFreeze>0)aI('Freeze','❄️',this.timeFreeze);if(this.invulnerable>0)aI('Invulnerable','🛡️',this.invulnerable);if(this.speedBoost>0)aI('Speed','⚡',this.speedBoost);if(this.wallPass>0)aI('WallPass','👻',this.wallPass);if(this.playerShieldTurns>0)aI('Shield','🛡️',this.playerShieldTurns);c.style.display=hA?'flex':'none';}
+            updateAbilityButtonUI(){const uB=(id,cd,chg)=>{const b=document.getElementById(id+'Btn');const cD=document.getElementById(id+'CD')||document.getElementById(id+'Charges')||document.getElementById(id+'Count');if(!b||!cD)return;if(chg!==undefined){cD.textContent=`(${chg})`;b.classList.toggle('disabled',chg<=0);}else if(cd>0){cD.textContent=`(${cd}s)`;b.classList.add('disabled');}else{cD.textContent='';b.classList.remove('disabled');}};uB('trap',this.abilityCooldowns.trap,this.trapCharges);uB('freeze',this.abilityCooldowns.freeze);uB('shield',this.abilityCooldowns.shield);uB('fire',this.abilityCooldowns.fire);uB('bullet',this.abilityCooldowns.bullet);uB('magic',this.abilityCooldowns.magic);
+            const cdlEl=document.getElementById('abilityCooldownsDisplay');if(!cdlEl) return; let cdH='<h3><i class="fas fa-star"></i> Abilities</h3>';Object.keys(this.abilityCooldowns).forEach(k=>{const n=k.charAt(0).toUpperCase()+k.slice(1);if(this.abilityCooldowns[k]>0)cdH+=`<div class="achievement" style="font-size:0.8em;padding:4px 7px;">${n}: ${this.abilityCooldowns[k]}s</div>`;else if(k==='trap'&&this.trapCharges<this.maxTrapCharges&&this.abilityCooldowns.trap===0)cdH+=`<div class="achievement" style="font-size:0.8em;padding:4px 7px;">${n}: Ready(${this.trapCharges}/${this.maxTrapCharges})</div>`;else if(k==='trap'&&this.trapCharges===this.maxTrapCharges&&this.abilityCooldowns.trap===0)cdH+=`<div class="achievement unlocked" style="font-size:0.8em;padding:4px 7px;">${n}: Max(${this.trapCharges})</div>`;else if(this.abilityCooldowns[k]===0)cdH+=`<div class="achievement unlocked" style="font-size:0.8em;padding:4px 7px;">${n}: Ready!</div>`;});cdlEl.innerHTML=cdH;}
+
+            heuristic(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+            calculateSolution(){const oS=[{...this.start,g:0,h:this.heuristic(this.start,this.end),f:this.heuristic(this.start,this.end),parent:null}];const cS=new Set();this.solution=[];while(oS.length>0){oS.sort((a,b)=>a.f-b.f);const cur=oS.shift();if(cur.x===this.end.x&&cur.y===this.end.y){let t=cur;while(t){this.solution.unshift({x:t.x,y:t.y});t=t.parent;}return;}cS.add(`${cur.x},${cur.y}`);const dirs=[{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];for(const d of dirs){const nP={x:cur.x+d.x,y:cur.y+d.y};if(!this.isValidMove(nP.x,nP.y)||cS.has(`${nP.x},${nP.y}`))continue;const gS=cur.g+1;let nN=oS.find(n=>n.x===nP.x&&n.y===nP.y);if(!nN){nN={...nP,g:gS,h:this.heuristic(nP,this.end),f:gS+this.heuristic(nP,this.end),parent:cur};oS.push(nN);}else if(gS<nN.g){nN.parent=cur;nN.g=gS;nN.f=gS+nN.h;}}}console.warn("No A* solution");}
+            useHint() { if (this.hints <= 0 || this.gameCompleted || this.isGameOver) { this.showNotification(this.hints <= 0 ? 'No hints!💡' : 'Cannot use hint.', 'warning'); return; } this.hints--; this.usedHintThisLevel = true; this.playSound('hint'); this.score -= 50; this.activeHintCells = []; const pSI = this.solution.findIndex(p => p.x === this.player.x && p.y === this.player.y); if (pSI !== -1 && pSI < this.solution.length - 1) { for (let i = 1; i <= 2 && pSI + i < this.solution.length; i++) { this.activeHintCells.push(this.solution[pSI + i]); } } this.renderMaze(); setTimeout(() => { this.activeHintCells = []; this.renderMaze(); }, 2500); this.showNotification(`Hint! ${this.hints} left (-50pts). ✨`, 'info'); this.updateStats(); }
+            checkAndUnlockAchievements(cT){const u=(k,n)=>{if(!this.achievements[k]){this.achievements[k]=true;this.unlockAchievementVisuals(k,n);return true;}return false;};let nU=false;if(cT<this.currentSettings.timeBonus)nU|=u('speedRunner','Speed Runner');if(this.visitedCells.size>=(this.width*this.height*0.65))nU|=u('explorer','Great Explorer');if(this.difficulty==='expert'||this.difficulty==='nightmare')nU|=u('master','Maze Master');if(this.health===this.maxHealth&&this.difficulty!=='easy')nU|=u('survivor','Flawless Victory');if(this.collectedKeys===this.currentSettings.keys&&this.currentSettings.keys>0)nU|=u('keyMaster','Key Master');if(!this.usedHintThisLevel&&this.difficulty!=='easy')nU|=u('noHintAchievement','Pure Genius');
+            const totalEnemies = Object.values(this.currentSettings.enemies).reduce((s, c) => s + c, 0); if(this.trapsTriggeredThisLevel >= Math.max(1, Math.floor(totalEnemies / 2 || 0)))nU|=u('trapMaster','Trap Master'); if(this.enemiesDefeatedThisLevel >= totalEnemies && totalEnemies > 0)nU|=u('combatPro','Combat Pro'); if(nU)this.saveGameData();}
+            unlockAchievementVisuals(k,n){const el=document.getElementById(`${k}Achievement`);if(el&&!el.classList.contains('unlocked')){el.classList.add('unlocked');this.showNotification(`Achieved: ${n}!🏆`,'success');this.playSound('achievement');}}
+            getGrade(eff,time){const tR=time/(this.currentSettings.timeBonus*(this.difficulty==='easy'?1.2:1));if(eff>=95&&tR<=0.6)return{letter:'S+',emoji:'🌟',message:'PERFECT! Maze Legend!'};if(eff>=85&&tR<=0.8)return{letter:'S',emoji:'⭐',message:'Outstanding!'};if(eff>=75&&tR<=1.0)return{letter:'A',emoji:'🏆',message:'Excellent!'};if(eff>=60&&tR<=1.2)return{letter:'B',emoji:'👍',message:'Great job!'};if(eff>=50)return{letter:'C',emoji:'👌',message:'Well done!'};return{letter:'D',emoji:'😅',message:'Good effort!'};}
+            updateBestTime(d,t){if(!this.bestTimes[d]||t<this.bestTimes[d]){this.bestTimes[d]=t;this.showNotification(`New ${d.toUpperCase()} record: ${this.formatTime(t)}!🏅`,'success');this.updateLeaderboardUI();}}
+            updateLeaderboardUI(){const lE=document.getElementById('leaderboardList');if(!lE) return;lE.innerHTML='';Object.keys(this.difficultySettings).forEach(dK=>{const e=document.createElement('div');e.className='leaderboard-entry';const tS=this.bestTimes[dK]?this.formatTime(this.bestTimes[dK]):'--:--';e.innerHTML=`<span>${dK.charAt(0).toUpperCase()+dK.slice(1)}</span><span>${tS}</span>`;lE.appendChild(e);});}
+            playSound(type){if(!this.soundEnabled||!this.audioContext||this.audioContext.state!=='running')return;const S={move:{f:[300,350],d:0.04,t:'triangle',v:0.03},wall:{f:[90],d:0.12,t:'sawtooth',v:0.05},hint:{f:[600,750,900],d:0.07,t:'sine',v:0.06,seq:true},victory:{f:[523,659,783,1046],d:0.18,t:'sine',v:0.1,seq:true,gap:0.04},achievement:{f:[659,783,987,1318],d:0.13,t:'square',v:0.1,seq:true,gap:0.04},start:{f:[400,550],d:0.09,t:'sine',v:0.07},key:{f:[880,1100],d:0.13,t:'triangle',v:0.07},powerup:{f:[700,950,1200],d:0.06,t:'sine',v:0.07,seq:true},teleport:{f:[100,1200],d:0.35,t:'sawtooth',v:0.07,sweep:true},damage:{f:[70],d:0.2,t:'square',v:0.09},gameOver:{f:[392,349,311,261],d:0.25,t:'sawtooth',v:0.1,seq:true,gap:0.08},doorOpen:{f:[440,587],d:0.18,t:'square',v:0.07},trapSet:{f:[200,120],d:0.12,t:'noise',v:0.06},trapSpring:{f:[1000,400],d:0.18,t:'sawtooth',v:0.09,sweep:true},freezeCast:{f:[900,1250,750],d:0.09,t:'sine',v:0.08,seq:true,gap:0.02},shieldUp:{f:[400,650,900],d:0.1,t:'sine',v:0.09,seq:true},fireball:{f:[300,100],d:0.25,t:'sawtooth',v:0.09,sweep:true},bullet:{f:[1200,1600],d:0.04,t:'triangle',v:0.05},magicCast:{f:[200,850,450],d:0.13,t:'square',v:0.09,seq:true,gap:0.03},enemyHit:{f:[140],d:0.09,t:'square',v:0.07},enemyDefeat:{f:[600,350,150],d:0.1,t:'sawtooth',v:0.09,seq:true},enemyShoot:{f:[1000,1300],d:0.06,t:'triangle',v:0.06},tankRoar:{f:[100,80],d:0.4,t:'sawtooth',v:0.12,seq:true, gap:0.05},tankCharge:{f:[150,350,200],d:0.15,t:'square',v:0.15,seq:true,gap:0.03},stealthOn:{f:[300,500,200],d:0.1,t:'sine',v:0.05,sweep:true,seq:true},stealthOff:{f:[200,400,100],d:0.1,t:'sine',v:0.05,sweep:true,seq:true}};
+            const s=S[type];if(!s)return;let cT=this.audioContext.currentTime;const pN=(fr,du,vo,wa,dl)=>{try{const o=this.audioContext.createOscillator();const g=this.audioContext.createGain();o.connect(g);g.connect(this.audioContext.destination);o.type=wa==='noise'?'sawtooth':wa;if(wa==='noise'){const bF=this.audioContext.createBiquadFilter();bF.type='bandpass';bF.frequency.value=800;bF.Q.value=0.5;o.connect(bF);bF.connect(g);}if(s.sweep){o.frequency.setValueAtTime(fr[0],cT+dl);o.frequency.linearRampToValueAtTime(fr[1],cT+dl+du*0.8);o.frequency.linearRampToValueAtTime(fr[0]*0.5,cT+dl+du);}else o.frequency.setValueAtTime(fr,cT+dl);g.gain.setValueAtTime(vo,cT+dl);g.gain.exponentialRampToValueAtTime(0.0001,cT+dl+du);o.start(cT+dl);o.stop(cT+dl+du);}catch(e){console.warn("Error playing sound", type, e);}};if(s.seq){let dL=0;s.f.forEach(f=>{pN(f,s.d,s.v,s.t,dL);dL+=s.d+(s.gap||0);});}else if(Array.isArray(s.f)&&!s.sweep){s.f.forEach(f=>pN(f,s.d,s.v,s.t,0));}else pN(s.sweep?s.f:s.f[0],s.d,s.v,s.t,0);}
+            
+            async loadBackgroundMusic() {
+                if (this.musicBuffer || !this.audioContext) return;
+                try {
+                    const response = await fetch('https://cdn.pixabay.com/audio/2022/08/04/audio_2dde6b1b73.mp3');
+                    const arrayBuffer = await response.arrayBuffer();
+                    this.musicBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                } catch (e) {
+                    console.error("Failed to load background music:", e);
+                    this.toggleSetting('music', false);
+                }
+            }
+            
+            startBackgroundMusic() {
+                if (!this.musicEnabled || !this.audioContext || this.audioContext.state !== 'running' || this.musicSource || !this.musicBuffer) return; 
+                this.stopBackgroundMusic(); 
+                this.musicGainNode = this.audioContext.createGain();
+                this.musicGainNode.gain.setValueAtTime(0.08, this.audioContext.currentTime); 
+                this.musicGainNode.connect(this.audioContext.destination);
+                this.musicSource = this.audioContext.createBufferSource();
+                this.musicSource.buffer = this.musicBuffer;
+                this.musicSource.loop = true;
+                this.musicSource.connect(this.musicGainNode);
+                this.musicSource.start(0);
+            }
+
+            stopBackgroundMusic() {
+                if (this.musicSource) {
+                    try {this.musicSource.stop(0);} catch(e) { /* Ignore */ }
+                    this.musicSource.disconnect(); this.musicSource = null;
+                }
+                if (this.musicGainNode) {this.musicGainNode.disconnect(); this.musicGainNode = null;}
+            }
+
+            toggleSetting(type, forceValue = null) {
+                const settingMap = {
+                    music: {prop: 'musicEnabled', toggleEl: 'musicToggle', on: this.startBackgroundMusic, off: this.stopBackgroundMusic, name: 'Music'},
+                    sound: {prop: 'soundEnabled', toggleEl: 'soundToggle', name: 'SFX'},
+                    liteMode: {prop: 'liteMode', toggleEl: 'liteModeToggle', name: 'Lite Mode'}
+                };
+                const setting = settingMap[type];
+                if (!setting) return;
+
+                const currentValue = this[setting.prop];
+                const newValue = forceValue !== null ? forceValue : !currentValue;
+                this[setting.prop] = newValue;
+                
+                document.getElementById(setting.toggleEl)?.classList.toggle('active', newValue);
+                if (forceValue === null) {
+                    this.showNotification(`${setting.name} ${newValue ? 'ON' : 'OFF'}`, 'info');
+                }
+
+                if (setting.on && newValue) setting.on.call(this);
+                if (setting.off && !newValue) setting.off.call(this);
+                
+                this.saveGameData();
+            }
+
+            formatTime(s){const m=Math.floor(s/60);const z=s%60;return `${m.toString().padStart(2,'0')}:${z.toString().padStart(2,'0')}`; }
+            showNotification(msg,type='info'){const n=document.getElementById('notification');const t=document.getElementById('notificationText');const i=document.getElementById('notificationIcon');if(!n||!t||!i)return;n.className=`notification ${type}`;i.className='fas';if(type==='success')i.classList.add('fa-check-circle');else if(type==='warning')i.classList.add('fa-exclamation-triangle');else if(type==='error')i.classList.add('fa-times-circle');else i.classList.add('fa-info-circle');t.textContent=msg;n.classList.add('show');setTimeout(()=>n.classList.remove('show'),3200);}
+            createParticleEffect(tE){if(!tE || this.liteMode)return;const pC=document.getElementById('particles');if(!pC)return;const r=tE.getBoundingClientRect();const mR=document.getElementById('maze')?.getBoundingClientRect();if(!mR)return;for(let i=0;i<25;i++){setTimeout(()=>{const p=document.createElement('div');p.className='particle';p.style.left=(r.left-mR.left+r.width/2+(Math.random()-0.5)*r.width*1.8)+'px';p.style.top=(r.top-mR.top+r.height/2+(Math.random()-0.5)*r.height*1.8)+'px';p.style.background=`hsl(${Math.random()*60+200},100%,70%)`;p.style.animationDelay=Math.random()*0.4+'s';pC.appendChild(p);setTimeout(()=>p.remove(),2200);},i*25);}}
+            saveGameData(){const dS={difficulty:this.difficulty,musicEnabled:this.musicEnabled,soundEnabled:this.soundEnabled,liteMode:this.liteMode,achievements:this.achievements,bestTimes:this.bestTimes,currentLevel:this.level};try{localStorage.setItem('mazeMasterProData_v6',JSON.stringify(dS));}catch(e){console.warn("Could not save.",e);}}
+            loadGameData(){try{const sD=localStorage.getItem('mazeMasterProData_v6');if(sD){const d=JSON.parse(sD);this.difficulty=d.difficulty||'easy';this.level=d.currentLevel||1;this.achievements=d.achievements||this.achievements;this.bestTimes=d.bestTimes||{};this.toggleSetting('music', d.musicEnabled !== false);this.toggleSetting('sound', d.soundEnabled !== false);this.toggleSetting('liteMode', d.liteMode === true);
+            document.querySelectorAll('#difficultyButtons .settings-btn').forEach(b=>{b.classList.toggle('active', b.dataset.difficulty === this.difficulty);});
+            Object.keys(this.achievements).forEach(k=>{if(this.achievements[k]){const el=document.getElementById(`${k}Achievement`);if(el)el.classList.add('unlocked');}});}}catch(e){console.warn("Could not load.",e);}this.updateLeaderboardUI();}
+            
+            showWelcomeModal() {
+                const m=document.getElementById('gameModal');const c=document.getElementById('modalContent');if(!m||!c)return;
+                c.innerHTML=`<div><h2><i class="fas fa-dungeon"></i> Welcome to MazeMaster Pro!</h2>
+                <p style="margin:15px 0;">The maze awaits. Are you ready to begin?</p>
+                <button class="btn btn-success" id="startFromModalBtn"><i class="fas fa-play-circle"></i> Click to Start</button></div>`;
+                m.classList.add('show');
+                document.getElementById('startFromModalBtn').addEventListener('click', () => {
+                    closeModal();
+                    this.startGameFromWelcome();
+                }, { once: true });
+            }
+        }
+
+        let game;
+        function toggleSidebar(){
+            const sb = document.getElementById('sidebar');
+            if(sb) sb.classList.toggle('hidden');
+            if(game) game.resumeAudioContext();
+        }
+        function showHelp(){const m=document.getElementById('gameModal');const c=document.getElementById('modalContent');if(!m||!c)return;c.innerHTML=`<div><h2><i class="fas fa-book-reader"></i> How to Play</h2><div style="text-align:left;margin:15px 0;font-size:0.85rem;line-height:1.45;"><p><strong>Objective:</strong> Reach Finish 🏁. Collect Keys 🗝️ for Doors 🚪.</p><p><strong>Controls:</strong> Arrow keys/WASD or Swipe on Maze.</p><p><strong>Abilities (Buttons Below Maze):</strong></p><ul style="list-style:none;padding-left:0;"><li>💣 Trap: Place. Stuns enemy. Charges apply.</li><li>❄️ Freeze: Area freeze for enemies.</li><li>🛡️ Shield: Temporary invulnerability.</li><li>🔥 Fire: Shoots fireball.</li><li>💨 Dash: Short range attack.</li><li>✨ Magic: Pushes enemies.</li></ul><p><strong>Look out for:</strong> 👹 Enemies (🏹Ranged, 🗿Tank, 👻Stealth), 💀 Map Traps, 🌀 Teleporters, and helpful ⭐ Power-ups!</p></div><button class="btn btn-primary" onclick="closeModal()">Got It!</button></div>`;m.classList.add('show');}
+        function closeModal(){const m=document.getElementById('gameModal'); if(m)m.classList.remove('show');}
+        
+        let resizeTimeout;
+        window.addEventListener('resize',()=>{
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (game && game.gameStarted) {
+                    game.adjustCellSize();
+                    game.renderMaze();
+                }
+            }, 150); 
+        });
+
+        window.addEventListener('load',()=>{
+            game = new MazeGame();
+            game.init();
+            if(window.innerWidth<=768) {
+                const sb = document.getElementById('sidebar');
+                if(sb && !sb.classList.contains('hidden')) sb.classList.add('hidden');
+            }
+        });
+
+        document.body.addEventListener('click',(e)=>{
+            if(game) game.resumeAudioContext();
+            const m=document.getElementById('gameModal');
+            if(e.target===m)closeModal();
+        });
+
+        window.addEventListener('error',(e)=>{console.error('Unhandled Game Error:',e.message, e.filename, e.lineno, e.colno, e);if(game&&typeof game.showNotification === 'function')game.showNotification('Critical error! Refresh.😞','error');else{const n=document.getElementById('notification');const t=document.getElementById('notificationText');if(n&&t){t.textContent='Critical error on load! Refresh.';n.className='notification error show';}}});
+    </script>
+</body>
+</html>
